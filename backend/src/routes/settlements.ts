@@ -5,12 +5,16 @@ import models from '../models';
 const router = express.Router();
 const { Settlement, Purchase, Sale, Supplier, Customer } = models;
 
-// 获取所有结算记录
+// 获取所有结算记录（带分页）
 router.get('/', async (req, res) => {
   try {
-    const { supplierName, customerName, billType, paymentMethod, expressBillCode, amount } = req.query;
+    const { supplierName, customerName, billType, paymentMethod, expressBillCode, amount, page = 1, pageSize = 10 } = req.query;
     
-    console.log('开始获取结算记录，查询参数:', { supplierName, customerName, billType, paymentMethod, expressBillCode, amount });
+    console.log('开始获取结算记录，查询参数:', { supplierName, customerName, billType, paymentMethod, expressBillCode, amount, page, pageSize });
+    
+    const pageNum = parseInt(page as string) || 1;
+    const size = parseInt(pageSize as string) || 10;
+    const offset = (pageNum - 1) * size;
     
     const whereClause: any = {};
     
@@ -36,15 +40,15 @@ router.get('/', async (req, res) => {
       whereClause.amount = Number(amount);
     }
     
-    const settlements = await Settlement.findAll({
+    // 获取所有符合条件的结算记录
+    const allSettlements = await Settlement.findAll({
       where: whereClause,
       order: [['createdAt', 'DESC']]
     });
-    console.log('获取到结算记录:', settlements.length);
     
     // 为每个结算记录添加关联的单据信息
     let settlementsWithDetails = await Promise.all(
-      settlements.map(async (settlement) => {
+      allSettlements.map(async (settlement) => {
         try {
           if (settlement.bill_type === 'purchase') {
             const purchase = await Purchase.findByPk(settlement.bill_id, {
@@ -79,7 +83,7 @@ router.get('/', async (req, res) => {
       })
     );
     
-    // 前端过滤供应商和客户名称（因为是关联数据）
+    // 过滤供应商和客户名称
     if (supplierName && typeof supplierName === 'string') {
       settlementsWithDetails = settlementsWithDetails.filter((s: any) => 
         s.supplier && s.supplier.name && s.supplier.name.includes(supplierName)
@@ -92,8 +96,22 @@ router.get('/', async (req, res) => {
       );
     }
     
-    console.log('处理完成，返回结算记录');
-    res.json(settlementsWithDetails);
+    // 计算过滤后的总记录数
+    const total = settlementsWithDetails.length;
+    
+    // 进行分页
+    const paginatedData = settlementsWithDetails.slice(offset, offset + size);
+    
+    console.log('处理完成，返回结算记录:', { total, page: pageNum, pageSize: size, filteredCount: settlementsWithDetails.length, returnedCount: paginatedData.length });
+    res.json({
+      data: paginatedData,
+      pagination: {
+        total,
+        page: pageNum,
+        pageSize: size,
+        totalPages: Math.ceil(total / size)
+      }
+    });
   } catch (error) {
     console.error('获取结算记录失败:', error);
     res.status(500).json({ error: '获取结算记录失败', details: (error as any).message });
@@ -188,7 +206,10 @@ router.get('/purchase-bills', async (req, res) => {
     
     const bills = await Purchase.findAll({
       where: whereClause,
-      include: includeOptions,
+      include: [
+        ...includeOptions,
+        { model: models.PurchaseItem, as: 'PurchaseItems', include: [{ model: models.Product, as: 'Product' }] }
+      ],
       order: [['createdAt', 'DESC']]
     });
     res.json(bills);
@@ -226,7 +247,10 @@ router.get('/sale-bills', async (req, res) => {
     
     const bills = await Sale.findAll({
       where: { settlement_status: '未结' },
-      include: includeOptions,
+      include: [
+        ...includeOptions,
+        { model: models.SaleItem, as: 'SaleItems', include: [{ model: models.Product, as: 'Product' }] }
+      ],
       order: [['createdAt', 'DESC']]
     });
     res.json(bills);

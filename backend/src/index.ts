@@ -85,34 +85,56 @@ app.listen(PORT, async () => {
     await sequelize.authenticate();
     console.log('数据库连接成功');
     
-    // 手动创建快递单相关的表
+    // 手动创建缺失的表
+    // 创建Inventories表（复数形式）
     await sequelize.query(`
-      CREATE TABLE IF NOT EXISTS ExpressBills (
-        id UUID PRIMARY KEY,
-        express_code VARCHAR(255) NOT NULL UNIQUE,
-        supplier_id UUID,
-        status VARCHAR(50) NOT NULL DEFAULT '待处理',
-        operator VARCHAR(100) NOT NULL,
-        remark TEXT,
-        purchase_id UUID,
+      CREATE TABLE IF NOT EXISTS Inventories (
+        product_id UUID PRIMARY KEY,
+        current_quantity INTEGER NOT NULL DEFAULT 0,
+        avg_cost DECIMAL(10,2) NOT NULL DEFAULT 0,
         createdAt DATETIME NOT NULL,
-        updatedAt DATETIME NOT NULL
+        updatedAt DATETIME NOT NULL,
+        FOREIGN KEY (product_id) REFERENCES Products(id)
       );
     `);
     
+    // 创建InventoryLog表
     await sequelize.query(`
-      CREATE TABLE IF NOT EXISTS ExpressBillItems (
+      CREATE TABLE IF NOT EXISTS InventoryLogs (
         id UUID PRIMARY KEY,
-        express_bill_id UUID NOT NULL,
         product_id UUID NOT NULL,
+        type VARCHAR(50) NOT NULL,
         quantity INTEGER NOT NULL,
-        price DECIMAL(10,2),
-        subtotal DECIMAL(10,2),
+        balance INTEGER NOT NULL,
+        reference_type VARCHAR(50),
+        reference_id UUID,
+        operator VARCHAR(100) NOT NULL,
         createdAt DATETIME NOT NULL,
         updatedAt DATETIME NOT NULL,
-        FOREIGN KEY (express_bill_id) REFERENCES ExpressBills(id)
+        FOREIGN KEY (product_id) REFERENCES Products(id)
       );
     `);
+    
+    console.log('数据库表创建完成');
+    
+    // 为每个商品创建初始库存记录
+    try {
+      const { Product, Inventory } = models;
+      const products = await Product.findAll();
+      for (const product of products) {
+        const existingInventory = await Inventory.findOne({ where: { product_id: product.id } });
+        if (!existingInventory) {
+          await Inventory.create({
+            product_id: product.id,
+            current_quantity: 0,
+            avg_cost: 0
+          });
+        }
+      }
+      console.log('初始库存记录创建完成');
+    } catch (error) {
+      console.error('创建初始库存记录失败:', error);
+    }
     
     // 为Purchase表添加express_bill_code字段
     try {
@@ -124,8 +146,6 @@ app.listen(PORT, async () => {
       // 忽略列已存在的错误
       console.log('Purchase表express_bill_code字段已存在');
     }
-    
-    console.log('快递单相关表创建完成');
     
     // 为Settlement表添加express_bill_code字段
     try {

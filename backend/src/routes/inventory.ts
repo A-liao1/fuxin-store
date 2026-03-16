@@ -1,5 +1,6 @@
 import express from 'express';
 import models from '../models';
+import { Op } from 'sequelize';
 
 const router = express.Router();
 const { Inventory, Product, InventoryLog } = models;
@@ -8,9 +9,22 @@ const { Inventory, Product, InventoryLog } = models;
 router.get('/', async (req, res) => {
   try {
     const inventory = await Inventory.findAll({
+      where: {
+        current_quantity: {
+          [Op.gt]: 0
+        }
+      },
       include: [{ model: Product, as: 'Product' }]
     });
-    res.json(inventory);
+    // 转换数据格式，使用前端期望的字段名
+    const formattedInventory = inventory.map(item => ({
+      product_id: item.product_id,
+      current_quantity: item.current_quantity,
+      quantity: item.current_quantity, // 兼容移动端
+      avg_cost: item.avg_cost,
+      Product: (item as any).Product
+    }));
+    res.json(formattedInventory);
   } catch (error) {
     res.status(500).json({ error: '获取库存列表失败' });
   }
