@@ -378,7 +378,7 @@ show_deploy_info() {
     echo "  - 服务器: $SERVER"
     echo "  - 部署目录: $DEPLOY_DIR"
     echo "  - 应用名称: $APP_NAME"
-    echo "  - 访问地址: https://tkvn.fun"
+    echo "  - 访问地址: https://fuxin.fun"
     echo ""
     echo "数据库备份："
     echo "  - 备份目录: $BACKUP_DIR"
